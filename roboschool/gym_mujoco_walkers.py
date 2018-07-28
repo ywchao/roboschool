@@ -113,3 +113,53 @@ class RoboschoolHumanoid(RoboschoolForwardWalkerMujocoXML):
 
     def alive_bonus(self, z, pitch):
         return +2 if z > 0.78 else -1   # 2 here because 17 joints produce a lot of electricity cost just from policy noise, living must be better than dying
+
+class RoboschoolHumanoidBullet3(RoboschoolForwardWalkerMujocoXML):
+    foot_list = ["right_foot", "left_foot"]
+
+    def __init__(self, model_xml='humanoid.xml'):
+        RoboschoolForwardWalkerMujocoXML.__init__(self, model_xml, 'torso', action_dim=21, obs_dim=52, power=0.41)
+        # 21 joints, 6 of them important for walking (hip, knee, ankle), others may as well be turned off, 21/6 = 3.5
+        self.electricity_cost  = 3.5*RoboschoolForwardWalkerMujocoXML.electricity_cost
+        self.stall_torque_cost = 3.5*RoboschoolForwardWalkerMujocoXML.stall_torque_cost
+        self.initial_z = 0.8
+
+    def robot_specific_reset(self):
+        RoboschoolForwardWalkerMujocoXML.robot_specific_reset(self)
+        self.motor_names  = ["abdomen_z", "abdomen_y", "abdomen_x"]
+        self.motor_power  = [100, 100, 100]
+        self.motor_names += ["right_hip_x", "right_hip_z", "right_hip_y", "right_knee"]
+        self.motor_power += [100, 100, 300, 200]
+        self.motor_names += ["right_ankle_x", "right_ankle_y"]
+        self.motor_power += [50, 50]
+        self.motor_names += ["left_hip_x", "left_hip_z", "left_hip_y", "left_knee"]
+        self.motor_power += [100, 100, 300, 200]
+        self.motor_names += ["left_ankle_x", "left_ankle_y"]
+        self.motor_power += [50, 50]
+        self.motor_names += ["right_shoulder1", "right_shoulder2", "right_elbow"]
+        self.motor_power += [75, 75, 75]
+        self.motor_names += ["left_shoulder1", "left_shoulder2", "left_elbow"]
+        self.motor_power += [75, 75, 75]
+        self.motors = [self.jdict[n] for n in self.motor_names]
+        self.humanoid_task()
+
+    def humanoid_task(self):
+        self.set_initial_orientation(yaw_center=0, yaw_random_spread=np.pi/16)
+
+    def set_initial_orientation(self, yaw_center, yaw_random_spread):
+        cpose = cpp_household.Pose()
+        yaw = yaw_center + self.np_random.uniform(low=-yaw_random_spread, high=yaw_random_spread)
+        pitch = 0
+        roll = 0
+        cpose.set_xyz(self.start_pos_x, self.start_pos_y, self.start_pos_z + 1.4)
+        cpose.set_rpy(roll, pitch, yaw)
+        self.cpp_robot.set_pose_and_speed(cpose, 0,0,0)
+        self.initial_z = 0.8
+
+    def apply_action(self, a):
+        assert( np.isfinite(a).all() )
+        for i, m, power in zip(range(len(self.motors)), self.motors, self.motor_power):
+            m.set_motor_torque( float(power*self.power*np.clip(a[i], -1, +1)) )
+
+    def alive_bonus(self, z, pitch):
+        return +2 if z > 0.78 else -1   # 2 here because 21 joints produce a lot of electricity cost just from policy noise, living must be better than dying

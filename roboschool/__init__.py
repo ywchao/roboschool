@@ -82,6 +82,14 @@ register(
     tags={ "pg_complexity": 300*1000000 },
     )
 
+register(
+    id='RoboschoolHumanoidBullet3-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3',
+    max_episode_steps=1000,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    )
+
 
 # Atlas
 
@@ -111,6 +119,7 @@ from roboschool.gym_mujoco_walkers import RoboschoolWalker2d
 from roboschool.gym_mujoco_walkers import RoboschoolHalfCheetah
 from roboschool.gym_mujoco_walkers import RoboschoolAnt
 from roboschool.gym_mujoco_walkers import RoboschoolHumanoid
+from roboschool.gym_mujoco_walkers import RoboschoolHumanoidBullet3
 from roboschool.gym_humanoid_flagrun import RoboschoolHumanoidFlagrun
 from roboschool.gym_humanoid_flagrun import RoboschoolHumanoidFlagrunHarder
 from roboschool.gym_atlas import RoboschoolAtlasForwardWalk
