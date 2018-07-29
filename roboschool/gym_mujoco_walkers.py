@@ -6,6 +6,8 @@ import gym, gym.spaces, gym.utils, gym.utils.seeding
 import numpy as np
 import os, sys
 
+from roboschool.dm_control_utils import rewards
+
 class RoboschoolForwardWalkerMujocoXML(RoboschoolForwardWalker, RoboschoolMujocoXmlEnv):
     def __init__(self, fn, robot_name, action_dim, obs_dim, power):
         RoboschoolMujocoXmlEnv.__init__(self, fn, robot_name, action_dim, obs_dim)
@@ -163,3 +165,84 @@ class RoboschoolHumanoidBullet3(RoboschoolForwardWalkerMujocoXML):
 
     def alive_bonus(self, z, pitch):
         return +2 if z > 0.78 else -1   # 2 here because 21 joints produce a lot of electricity cost just from policy noise, living must be better than dying
+
+class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
+    def __init__(self, model_xml='humanoid.xml', reward_type='dm_control'):
+        RoboschoolHumanoidBullet3.__init__(self, model_xml)
+        self.reward_type = reward_type
+        if self.reward_type == "dm_control":
+            self.stand_height = 1.4
+            self.move_speed = 10  # Run task
+
+    def calc_state(self):
+        if self.reward_type == "dm_control":
+            self.head_height = self.robot_body.pose().xyz()[2] + 0.28
+
+            r, p, y = self.robot_body.pose().rpy()
+            Rr = np.array(
+                [[1,          0,           0],
+                 [0, np.cos(-r), -np.sin(-r)],
+                 [0, np.sin(-r),  np.cos(-r)]]
+                )
+            Rp = np.array(
+                [[ np.cos(-p), 0, np.sin(-p)],
+                 [          0, 1,          0],
+                 [-np.sin(-p), 0, np.cos(-p)]]
+                )
+            Ry = np.array(
+                [[np.cos(-y), -np.sin(-y), 0],
+                 [np.sin(-y),  np.cos(-y), 0],
+                 [         0,           0, 1]]
+                )
+            self.torso_xmat = Rr.dot(Rp.dot(Ry))
+
+        return super().calc_state()
+
+    def _step(self, a):
+        if not self.scene.multiplayer:  # if multiplayer, action first applied to all robots, then global step() called, then _step() for all robots with the same actions
+            self.apply_action(a)
+            self.scene.global_step()
+
+        state = self.calc_state()
+
+        alive = float(self.alive_bonus(state[0]+self.initial_z, self.body_rpy[1]))   # state[0] is body height above ground, body_rpy[1] is pitch
+        done = alive < 0
+        if not np.isfinite(state).all():
+            print("~INF~", state)
+            done = True
+
+        for i,f in enumerate(self.feet):
+            contact_names = set(x.name for x in f.contact_list())
+            self.feet_contact[i] = 1.0 if (self.foot_ground_object_names & contact_names) else 0.0
+
+        if self.reward_type == "dm_control":
+            standing = rewards.tolerance(self.head_height,
+                                         bounds=(self.stand_height, float('inf')),
+                                         margin=self.stand_height/4)
+            upright = rewards.tolerance(self.torso_xmat[2,2],
+                                        bounds=(0.9, float('inf')), sigmoid='linear',
+                                        margin=1.9, value_at_margin=0)
+            stand_reward = standing * upright
+            small_control = rewards.tolerance(a, margin=1,
+                                              value_at_margin=0,
+                                              sigmoid='quadratic').mean()
+            small_control = (4 + small_control) / 5
+            # Run task
+            torso_velocity = np.linalg.norm(np.array(self.robot_body.speed())[[0,1]])
+            move = rewards.tolerance(torso_velocity,
+                                     bounds=(self.move_speed, float('inf')),
+                                     margin=self.move_speed, value_at_margin=0,
+                                     sigmoid='linear')
+            move = (5*move + 1) / 6
+            reward = small_control * stand_reward * move
+
+        self.rewards = [reward]
+
+        self.frame += 1
+        if (done and not self.done) or self.frame==self.spec.timestep_limit:
+            self.episode_over(self.frame)
+        self.done += done   # 2 == 1+True
+        self.reward += sum(self.rewards)
+        self.HUD(state, a, done)
+
+        return state, sum(self.rewards), bool(done), {}
