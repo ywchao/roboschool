@@ -97,6 +97,14 @@ register(
     tags={ "pg_complexity": 100*1000000 },
     kwargs={ "reward_type": "dm_control" },
     )
+register(
+    id='RoboschoolHumanoidBullet3-rLLC-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3Experimental',
+    max_episode_steps=1000,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "llc" },
+    )
 
 
 # Atlas
