@@ -175,23 +175,35 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             self.move_speed = 10  # Run task
         if self.reward_type == "llc":
             traj_data = np.load('data/cmu_mocap.npz')
-            self.obs = traj_data['obs'][0]
-            self.qpos = traj_data['qpos'][0]
-            self.traj_counter = 0
+            self.obs = traj_data['obs'][[0]]
+            self.qpos = traj_data['qpos'][[0]]
+            self.rstep = traj_data['rstep'][traj_data['rstep'][:,0] == 0]
+            self.lstep = traj_data['lstep'][traj_data['lstep'][:,0] == 0]
 
     def robot_specific_reset(self):
         super().robot_specific_reset()
 
         if self.reward_type == "llc":
-            if self.traj_counter == len(self.qpos) - 1:
-                self.traj_counter = 0
+            self.reset_expert('r')
             for j, joint in enumerate(self.ordered_joints):
-                joint.reset_current_position(self.qpos[self.traj_counter, 2*j],
-                                             self.qpos[self.traj_counter, 2*j+1])
+                joint.reset_current_position(self.expert_qpos[0, 2*j],
+                                             self.expert_qpos[0, 2*j+1])
             cpose = cpp_household.Pose()
-            cpose.set_xyz(*self.qpos[self.traj_counter, -9:-6])
-            cpose.set_rpy(*self.qpos[self.traj_counter, -6:-3])
-            self.cpp_robot.set_pose_and_speed(cpose, *self.qpos[self.traj_counter, -3:])
+            cpose.set_xyz(0, 0, self.expert_qpos[0, -7])
+            cpose.set_rpy(*self.expert_qpos[0, -6:-3])
+            self.cpp_robot.set_pose_and_speed(cpose, *self.expert_qpos[0, -3:])
+
+    def reset_expert(self, foot):
+        assert foot == 'r' or foot == 'l'
+        if foot == 'r':
+            s = np.random.randint(len(self.rstep))
+            s = self.rstep[s]
+        if foot == 'l':
+            s = np.random.randint(len(self.lstep))
+            s = self.lstep[s]
+        self.cur_foot = foot
+        self.expert_qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
+        self.expert_step = 0
 
     def calc_state(self):
         if self.reward_type == "dm_control":
@@ -256,12 +268,15 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             reward = small_control * stand_reward * move
 
         if self.reward_type == "llc":
-            self.traj_counter += 1
-            assert self.traj_counter <= len(self.qpos) - 1
+            self.expert_step += 1
             cur_joint_pos = np.array([j.current_position()[0] for j in self.ordered_joints], dtype=np.float32)
-            ref_joint_pos = self.qpos[self.traj_counter, 0:2*len(self.ordered_joints):2]
+            ref_joint_pos = self.expert_qpos[self.expert_step, 0:2*len(self.ordered_joints):2]
             reward = np.exp(-np.sum((cur_joint_pos - ref_joint_pos)**2))
-            done = done or self.traj_counter == len(self.qpos) - 1
+            if self.expert_step == len(self.expert_qpos) - 1:
+                if self.cur_foot == 'r':
+                    self.reset_expert('l')
+                else:
+                    self.reset_expert('r')
 
         self.rewards = [reward]
 
