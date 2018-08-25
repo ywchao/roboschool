@@ -265,20 +265,24 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                                      margin=self.move_speed, value_at_margin=0,
                                      sigmoid='linear')
             move = (5*move + 1) / 6
-            reward = small_control * stand_reward * move
+            self.rewards = [small_control * stand_reward * move]
 
         if self.reward_type == "llc":
             self.expert_step += 1
+            # Joint positions
             cur_joint_pos = np.array([j.current_position()[0] for j in self.ordered_joints], dtype=np.float32)
             ref_joint_pos = self.expert_qpos[self.expert_step, 0:2*len(self.ordered_joints):2]
-            reward = np.exp(-np.sum((cur_joint_pos - ref_joint_pos)**2))
+            r_joint_pos = np.exp(-np.sum((cur_joint_pos - ref_joint_pos)**2))
+            # Torso velocity
+            cur_torso_vel = np.array(self.robot_body.speed())
+            ref_torso_vel = self.expert_qpos[self.expert_step, -3:]
+            r_torso_vel = np.exp(-np.sum((cur_torso_vel - ref_torso_vel)**2))
+            self.rewards = [0.5 * r_joint_pos, 0.1 * r_torso_vel]
             if self.expert_step == len(self.expert_qpos) - 1:
                 if self.cur_foot == 'r':
                     self.reset_expert('l')
                 else:
                     self.reset_expert('r')
-
-        self.rewards = [reward]
 
         self.frame += 1
         if (done and not self.done) or self.frame==self.spec.timestep_limit:
