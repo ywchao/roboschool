@@ -170,9 +170,11 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
     def __init__(self, model_xml='humanoid.xml', reward_type='dm_control'):
         RoboschoolHumanoidBullet3.__init__(self, model_xml)
         self.reward_type = reward_type
+
         if self.reward_type == "dm_control":
             self.stand_height = 1.4
             self.move_speed = 10  # Run task
+
         if self.reward_type == "llc":
             traj_data = np.load('data/cmu_mocap.npz')
             self.obs = traj_data['obs'][[0]]
@@ -184,7 +186,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         super().robot_specific_reset()
 
         if self.reward_type == "llc":
-            self.reset_expert('r')
+            self._reset_expert('r')
             for j, joint in enumerate(self.ordered_joints):
                 joint.reset_current_position(self.expert_qpos[0, 2*j],
                                              self.expert_qpos[0, 2*j+1])
@@ -193,7 +195,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             cpose.set_rpy(*self.expert_qpos[0, -6:-3])
             self.cpp_robot.set_pose_and_speed(cpose, *self.expert_qpos[0, -3:])
 
-    def reset_expert(self, foot):
+    def _reset_expert(self, foot):
         assert foot == 'r' or foot == 'l'
         if foot == 'r':
             s = np.random.randint(len(self.rstep))
@@ -277,12 +279,13 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             cur_torso_vel = np.array(self.robot_body.speed())
             ref_torso_vel = self.expert_qpos[self.expert_step, -3:]
             r_torso_vel = np.exp(-np.sum((cur_torso_vel - ref_torso_vel)**2))
+            # Total reward
             self.rewards = [0.5 * r_joint_pos, 0.1 * r_torso_vel]
             if self.expert_step == len(self.expert_qpos) - 1:
                 if self.cur_foot == 'r':
-                    self.reset_expert('l')
+                    self._reset_expert('l')
                 else:
-                    self.reset_expert('r')
+                    self._reset_expert('r')
 
         self.frame += 1
         if (done and not self.done) or self.frame==self.spec.timestep_limit:
