@@ -167,7 +167,7 @@ class RoboschoolHumanoidBullet3(RoboschoolForwardWalkerMujocoXML):
         return +2 if z > 0.78 else -1   # 2 here because 21 joints produce a lot of electricity cost just from policy noise, living must be better than dying
 
 class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
-    def __init__(self, model_xml='humanoid.xml', reward_type='dm_control'):
+    def __init__(self, model_xml='humanoid.xml', reward_type='llc'):
         RoboschoolHumanoidBullet3.__init__(self, model_xml)
         self.reward_type = reward_type
 
@@ -184,6 +184,9 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
 
     def robot_specific_reset(self):
         super().robot_specific_reset()
+
+        self.pre_joint_pos = None
+        self.pre_torso_pos = None
 
         if self.reward_type == "llc":
             self._reset_expert('r')
@@ -208,6 +211,11 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         self.expert_step = 0
 
     def calc_state(self):
+        if self.pre_joint_pos is None:
+            self.pre_joint_pos = np.array([j.current_position()[0] for j in self.ordered_joints], dtype=np.float32)
+        if self.pre_torso_pos is None:
+            self.pre_torso_pos = np.array(self.robot_body.pose().xyz(), dtype=np.float32)
+
         if self.reward_type == "dm_control":
             self.head_height = self.robot_body.pose().xyz()[2] + 0.28
 
@@ -248,6 +256,9 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             contact_names = set(x.name for x in f.contact_list())
             self.feet_contact[i] = 1.0 if (self.foot_ground_object_names & contact_names) else 0.0
 
+        cur_joint_pos = np.array([j.current_position()[0] for j in self.ordered_joints], dtype=np.float32)
+        cur_torso_pos = np.array(self.robot_body.pose().xyz(), dtype=np.float32)
+
         if self.reward_type == "dm_control":
             standing = rewards.tolerance(self.head_height,
                                          bounds=(self.stand_height, float('inf')),
@@ -272,20 +283,24 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         if self.reward_type == "llc":
             self.expert_step += 1
             # Joint positions
-            cur_joint_pos = np.array([j.current_position()[0] for j in self.ordered_joints], dtype=np.float32)
+            act_joint_pos = cur_joint_pos
             ref_joint_pos = self.expert_qpos[self.expert_step, 0:2*len(self.ordered_joints):2]
-            r_joint_pos = np.exp(-np.sum((cur_joint_pos - ref_joint_pos)**2))
+            r_joint_pos = np.exp(-1.0000 * np.sum((act_joint_pos - ref_joint_pos)**2))
             # Torso velocity
-            cur_torso_vel = np.array(self.robot_body.speed())
-            ref_torso_vel = self.expert_qpos[self.expert_step, -3:]
-            r_torso_vel = np.exp(-np.sum((cur_torso_vel - ref_torso_vel)**2))
+            act_torso_vel = (cur_torso_pos - self.pre_torso_pos) / 0.0165
+            ref_torso_vel = (self.expert_qpos[self.expert_step, -9:-6] -
+                             self.expert_qpos[self.expert_step - 1, -9:-6]) / 0.0165
+            r_torso_vel = np.exp(-1.0000 * np.sum((act_torso_vel - ref_torso_vel)**2))
             # Total reward
-            self.rewards = [0.5 * r_joint_pos, 0.1 * r_torso_vel]
+            self.rewards = [0.5000 * r_joint_pos, 0.1000 * r_torso_vel]
             if self.expert_step == len(self.expert_qpos) - 1:
                 if self.cur_foot == 'r':
                     self._reset_expert('l')
                 else:
                     self._reset_expert('r')
+
+        self.pre_joint_pos = cur_joint_pos
+        self.pre_torso_pos = cur_torso_pos
 
         self.frame += 1
         if (done and not self.done) or self.frame==self.spec.timestep_limit:
