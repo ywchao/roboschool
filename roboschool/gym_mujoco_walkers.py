@@ -182,33 +182,38 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             self.rstep = traj_data['rstep'][traj_data['rstep'][:,0] == 0]
             self.lstep = traj_data['lstep'][traj_data['lstep'][:,0] == 0]
 
-    def robot_specific_reset(self):
-        super().robot_specific_reset()
-
+    def humanoid_task(self):
         self.pre_joint_pos = None
         self.pre_torso_pos = None
 
         if self.reward_type == "llc":
-            self._reset_expert('r')
-            for j, joint in enumerate(self.ordered_joints):
-                joint.reset_current_position(self.expert_qpos[0, 2*j],
-                                             self.expert_qpos[0, 2*j+1])
-            cpose = cpp_household.Pose()
-            cpose.set_xyz(0, 0, self.expert_qpos[0, -7])
-            cpose.set_rpy(*self.expert_qpos[0, -6:-3])
-            self.cpp_robot.set_pose_and_speed(cpose, *self.expert_qpos[0, -3:])
-
-    def _reset_expert(self, foot):
+            self._reset_expert('r', ind=0)
+            qpos = self.expert_qpos[0].copy()
+            qpos[[-9, -8]] = 0
+            self._reset_robot_pose_and_speed(qpos)
+            self.initial_z = 0.8
+        else:
+            super().humanoid_task()
+        
+    def _reset_expert(self, foot, ind=None):
         assert foot == 'r' or foot == 'l'
         if foot == 'r':
-            s = np.random.randint(len(self.rstep))
+            s = np.random.randint(len(self.rstep)) if ind is None else ind
             s = self.rstep[s]
         if foot == 'l':
-            s = np.random.randint(len(self.lstep))
+            s = np.random.randint(len(self.lstep)) if ind is None else ind
             s = self.lstep[s]
         self.cur_foot = foot
         self.expert_qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
         self.expert_step = 0
+
+    def _reset_robot_pose_and_speed(self, qpos):
+        for j, joint in enumerate(self.ordered_joints):
+            joint.reset_current_position(qpos[2*j], qpos[2*j+1])
+        cpose = cpp_household.Pose()
+        cpose.set_xyz(*qpos[-9:-6])
+        cpose.set_rpy(*qpos[-6:-3])
+        self.cpp_robot.set_pose_and_speed(cpose, *qpos[-3:])
 
     def calc_state(self):
         if self.pre_joint_pos is None:
@@ -310,3 +315,11 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         self.HUD(state, a, done)
 
         return state, sum(self.rewards), bool(done), {}
+
+class RoboschoolHumanoidBullet3ExperimentalTrainingWrapper(RoboschoolHumanoidBullet3Experimental):
+    def __init__(self, model_xml='humanoid.xml', reward_type='llc'):
+        RoboschoolHumanoidBullet3Experimental.__init__(self, model_xml, reward_type)
+
+    def humanoid_task(self):
+        # Enables a different iniitialization strategy during training
+        super().humanoid_task()

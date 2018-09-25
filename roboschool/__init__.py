@@ -105,6 +105,14 @@ register(
     tags={ "pg_complexity": 100*1000000 },
     kwargs={ "reward_type": "llc" },
     )
+register(
+    id='RoboschoolHumanoidBullet3-rLLC-train-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3ExperimentalTrainingWrapper',
+    max_episode_steps=1000,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "llc" },
+    )
 
 
 # Atlas
@@ -137,6 +145,7 @@ from roboschool.gym_mujoco_walkers import RoboschoolAnt
 from roboschool.gym_mujoco_walkers import RoboschoolHumanoid
 from roboschool.gym_mujoco_walkers import RoboschoolHumanoidBullet3
 from roboschool.gym_mujoco_walkers import RoboschoolHumanoidBullet3Experimental
+from roboschool.gym_mujoco_walkers import RoboschoolHumanoidBullet3ExperimentalTrainingWrapper
 from roboschool.gym_humanoid_flagrun import RoboschoolHumanoidFlagrun
 from roboschool.gym_humanoid_flagrun import RoboschoolHumanoidFlagrunHarder
 from roboschool.gym_atlas import RoboschoolAtlasForwardWalk
