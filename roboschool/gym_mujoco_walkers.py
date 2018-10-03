@@ -198,10 +198,10 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
     def _reset_expert(self, foot, ind=None):
         assert foot == 'r' or foot == 'l'
         if foot == 'r':
-            s = np.random.randint(len(self.rstep)) if ind is None else ind
+            s = self.np_random.randint(len(self.rstep)) if ind is None else ind
             s = self.rstep[s]
         if foot == 'l':
-            s = np.random.randint(len(self.lstep)) if ind is None else ind
+            s = self.np_random.randint(len(self.lstep)) if ind is None else ind
             s = self.lstep[s]
         self.cur_foot = foot
         self.expert_qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
@@ -287,21 +287,9 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
 
         if self.reward_type == "llc":
             self.expert_step += 1
-            # Joint positions
-            act_joint_pos = cur_joint_pos
-            ref_joint_pos = self.expert_qpos[self.expert_step, 0:2*len(self.ordered_joints):2]
-            r_joint_pos = np.exp(-1.0000 * np.sum((act_joint_pos - ref_joint_pos)**2))
-            # Joint velocities
-            act_joint_vel = (cur_joint_pos - self.pre_joint_pos) / 0.0165
-            ref_joint_vel = (self.expert_qpos[self.expert_step, 0:2*len(self.ordered_joints):2] -
-                             self.expert_qpos[self.expert_step - 1, 0:2*len(self.ordered_joints):2]) / 0.0165
-            r_joint_vel = np.exp(-0.0100 * np.sum((act_joint_vel - ref_joint_vel)**2))
-            # Torso velocity
-            act_torso_vel = (cur_torso_pos - self.pre_torso_pos) / 0.0165
-            ref_torso_vel = (self.expert_qpos[self.expert_step, -9:-6] -
-                             self.expert_qpos[self.expert_step - 1, -9:-6]) / 0.0165
-            r_torso_vel = np.exp(-1.0000 * np.sum((act_torso_vel - ref_torso_vel)**2))
-            # Total reward
+            r_joint_pos = self._reward_joint_pos(cur_joint_pos, 1.0000)
+            r_joint_vel = self._reward_joint_vel(cur_joint_pos, 0.0100)
+            r_torso_vel = self._reward_torso_vel(cur_torso_pos, 1.0000)
             self.rewards = [0.5000 * r_joint_pos, 0.0500 * r_joint_vel, 0.1000 * r_torso_vel]
             if self.expert_step == len(self.expert_qpos) - 1:
                 if self.cur_foot == 'r':
@@ -320,6 +308,23 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         self.HUD(state, a, done)
 
         return state, sum(self.rewards), bool(done), {}
+
+    def _reward_joint_pos(self, cur_joint_pos, w):
+        act_joint_pos = cur_joint_pos
+        ref_joint_pos = self.expert_qpos[self.expert_step, 0:2*len(self.ordered_joints):2]
+        return np.exp(-w * np.sum((act_joint_pos - ref_joint_pos)**2))
+
+    def _reward_joint_vel(self, cur_joint_pos, w):
+        act_joint_vel = (cur_joint_pos - self.pre_joint_pos) / 0.0165
+        ref_joint_vel = (self.expert_qpos[self.expert_step, 0:2*len(self.ordered_joints):2] -
+                         self.expert_qpos[self.expert_step - 1, 0:2*len(self.ordered_joints):2]) / 0.0165
+        return np.exp(-w * np.sum((act_joint_vel - ref_joint_vel)**2))
+
+    def _reward_torso_vel(self, cur_torso_pos, w):
+        act_torso_vel = (cur_torso_pos - self.pre_torso_pos) / 0.0165
+        ref_torso_vel = (self.expert_qpos[self.expert_step, -9:-6] -
+                         self.expert_qpos[self.expert_step - 1, -9:-6]) / 0.0165
+        return np.exp(-w * np.sum((act_torso_vel - ref_torso_vel)**2))
 
 class RoboschoolHumanoidBullet3ExperimentalTrainingWrapper(RoboschoolHumanoidBullet3Experimental):
     def __init__(self, model_xml='humanoid.xml', reward_type='llc'):
