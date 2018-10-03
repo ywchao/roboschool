@@ -167,7 +167,7 @@ class RoboschoolHumanoidBullet3(RoboschoolForwardWalkerMujocoXML):
         return +2 if z > 0.78 else -1   # 2 here because 21 joints produce a lot of electricity cost just from policy noise, living must be better than dying
 
 class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
-    def __init__(self, model_xml='humanoid.xml', reward_type='llc'):
+    def __init__(self, model_xml='humanoid.xml', reward_type='walk'):
         RoboschoolHumanoidBullet3.__init__(self, model_xml)
         self.reward_type = reward_type
 
@@ -175,7 +175,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             self.stand_height = 1.4
             self.move_speed = 10  # Run task
 
-        if self.reward_type == "llc":
+        if self.reward_type == "walk":
             traj_data = np.load('data/cmu_mocap.npz')
             self.obs = traj_data['obs'][[0]]
             self.qpos = traj_data['qpos'][[0]]
@@ -186,7 +186,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         self.pre_joint_pos = None
         self.pre_torso_pos = None
 
-        if self.reward_type == "llc":
+        if self.reward_type == "walk":
             self._reset_expert('r', ind=0)
             qpos = self.expert_qpos[0].copy()
             qpos[[-9, -8]] = 0
@@ -285,7 +285,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             move = (5*move + 1) / 6
             self.rewards = [small_control * stand_reward * move]
 
-        if self.reward_type == "llc":
+        if self.reward_type == "walk":
             self.expert_step += 1
             r_joint_pos = self._reward_joint_pos(cur_joint_pos, 1.0000)
             r_joint_vel = self._reward_joint_vel(cur_joint_pos, 0.0100)
@@ -327,7 +327,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         return np.exp(-w * np.sum((act_torso_vel - ref_torso_vel)**2))
 
 class RoboschoolHumanoidBullet3ExperimentalTrainingWrapper(RoboschoolHumanoidBullet3Experimental):
-    def __init__(self, model_xml='humanoid.xml', reward_type='llc'):
+    def __init__(self, model_xml='humanoid.xml', reward_type='walk'):
         RoboschoolHumanoidBullet3Experimental.__init__(self, model_xml, reward_type)
 
     def humanoid_task(self):
