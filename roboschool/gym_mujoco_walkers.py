@@ -194,7 +194,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             self.initial_z = 0.8
         else:
             super().humanoid_task()
-        
+
     def _reset_expert(self, foot, ind=None):
         assert foot == 'r' or foot == 'l'
         if foot == 'r':
