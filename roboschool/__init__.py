@@ -113,6 +113,22 @@ register(
     tags={ "pg_complexity": 100*1000000 },
     kwargs={ "reward_type": "walk" },
     )
+register(
+    id='RoboschoolHumanoidBullet3-rWalkTarget-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3Experimental',
+    max_episode_steps=1000,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "walk_target" },
+    )
+register(
+    id='RoboschoolHumanoidBullet3-rWalkTarget-train-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3ExperimentalTrainingWrapper',
+    max_episode_steps=1000,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "walk_target" },
+    )
 
 
 # Atlas

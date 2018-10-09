@@ -175,23 +175,34 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             self.stand_height = 1.4
             self.move_speed = 10  # Run task
 
-        if self.reward_type == "walk":
+        if self.reward_type == "walk" or self.reward_type == "walk_target":
             traj_data = np.load('data/cmu_mocap.npz')
             self.obs = traj_data['obs'][[0]]
             self.qpos = traj_data['qpos'][[0]]
             self.rstep = traj_data['rstep'][traj_data['rstep'][:,0] == 0]
             self.lstep = traj_data['lstep'][traj_data['lstep'][:,0] == 0]
 
+    def create_single_player_scene(self):
+        scene = super().create_single_player_scene()
+
+        if self.reward_type == "walk_target":
+            scene.zero_at_running_strip_start_line = False
+
+        return scene
+
     def humanoid_task(self):
         self.pre_joint_pos = None
         self.pre_torso_pos = None
 
-        if self.reward_type == "walk":
+        if self.reward_type == "walk" or self.reward_type == "walk_target":
             self._reset_expert('r', ind=0)
             qpos = self.expert_qpos[0].copy()
             qpos[[-9, -8]] = 0
             self._reset_robot_pose_and_speed(qpos)
             self.initial_z = 0.8
+
+            if self.reward_type == "walk_target":
+                self.target_reposition()
         else:
             super().humanoid_task()
 
@@ -215,7 +226,23 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         cpose.set_rpy(*qpos[-6:-3])
         self.cpp_robot.set_pose_and_speed(cpose, *qpos[-3:])
 
+    def target_reposition(self):
+        theta = self.np_random.uniform(-np.pi/4, np.pi/4)
+        dist = self.np_random.uniform(1, 5)
+        px, py = self.robot_body.pose().xyz()[:2]
+        vx, vy = self._rpy2xmat(*self.robot_body.pose().rpy())[0, :2]
+        dx = (np.cos(theta) * vx - np.sin(theta) * vy) * dist
+        dy = (np.sin(theta) * vx + np.cos(theta) * vy) * dist
+        self.walk_target_x = px + dx
+        self.walk_target_y = py + dy
+
+        self.target = None
+        self.target = self.scene.cpp_world.debug_sphere(self.walk_target_x, self.walk_target_y, 0.2, 0.1, 0xFF8080)
+        self.target_timeout = 151
+
     def calc_state(self):
+        state = super().calc_state()
+
         if self.pre_joint_pos is None:
             self.pre_joint_pos = np.array([j.current_position()[0] for j in self.ordered_joints], dtype=np.float32)
         if self.pre_torso_pos is None:
@@ -223,26 +250,34 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
 
         if self.reward_type == "dm_control":
             self.head_height = self.robot_body.pose().xyz()[2] + 0.28
+            self.torso_xmat = self._rpy2xmat(*self.robot_body.pose().rpy())
 
-            r, p, y = self.robot_body.pose().rpy()
-            Rr = np.array(
-                [[1,          0,           0],
-                 [0, np.cos(-r), -np.sin(-r)],
-                 [0, np.sin(-r),  np.cos(-r)]]
-                )
-            Rp = np.array(
-                [[ np.cos(-p), 0, np.sin(-p)],
-                 [          0, 1,          0],
-                 [-np.sin(-p), 0, np.cos(-p)]]
-                )
-            Ry = np.array(
-                [[np.cos(-y), -np.sin(-y), 0],
-                 [np.sin(-y),  np.cos(-y), 0],
-                 [         0,           0, 1]]
-                )
-            self.torso_xmat = Rr.dot(Rp.dot(Ry))
+        if self.reward_type == "walk_target":
+            self.target_timeout -= 1
+            if self.walk_target_dist < 0.2 or self.target_timeout <= 0:
+                self.target_reposition()
+                state = super().calc_state()
+                self.potential = self.calc_potential()       # avoid reward jump
 
-        return super().calc_state()
+        return state
+
+    def _rpy2xmat(self, r, p, y):
+        Rr = np.array(
+            [[1,          0,           0],
+             [0, np.cos(-r), -np.sin(-r)],
+             [0, np.sin(-r),  np.cos(-r)]]
+            )
+        Rp = np.array(
+            [[ np.cos(-p), 0, np.sin(-p)],
+             [          0, 1,          0],
+             [-np.sin(-p), 0, np.cos(-p)]]
+            )
+        Ry = np.array(
+            [[np.cos(-y), -np.sin(-y), 0],
+             [np.sin(-y),  np.cos(-y), 0],
+             [         0,           0, 1]]
+            )
+        return Rr.dot(Rp.dot(Ry))
 
     def _step(self, a):
         if not self.scene.multiplayer:  # if multiplayer, action first applied to all robots, then global step() called, then _step() for all robots with the same actions
@@ -285,12 +320,21 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             move = (5*move + 1) / 6
             self.rewards = [small_control * stand_reward * move]
 
-        if self.reward_type == "walk":
+        if self.reward_type == "walk" or self.reward_type == "walk_target":
             self.expert_step += 1
             r_joint_pos = self._reward_joint_pos(cur_joint_pos, 1.0000)
             r_joint_vel = self._reward_joint_vel(cur_joint_pos, 0.0100)
-            r_torso_vel = self._reward_torso_vel(cur_torso_pos, 1.0000)
-            self.rewards = [0.5000 * r_joint_pos, 0.0500 * r_joint_vel, 0.1000 * r_torso_vel]
+
+            if self.reward_type == "walk":
+                r_torso_vel = self._reward_torso_vel(cur_torso_pos, 1.0000)
+                self.rewards = [0.5000 * r_joint_pos, 0.0500 * r_joint_vel, 0.1000 * r_torso_vel]
+
+            if self.reward_type == "walk_target":
+                potential_old = self.potential
+                self.potential = self.calc_potential()
+                r_target = self._reward_target(potential_old, 10.0000)
+                self.rewards = [0.5000 * r_joint_pos, 0.0500 * r_joint_vel, 0.5000 * r_target]
+
             if self.expert_step == len(self.expert_qpos) - 1:
                 if self.cur_foot == 'r':
                     self._reset_expert('l')
@@ -325,6 +369,10 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         ref_torso_vel = (self.expert_qpos[self.expert_step, -9:-6] -
                          self.expert_qpos[self.expert_step - 1, -9:-6]) / 0.0165
         return np.exp(-w * np.sum((act_torso_vel - ref_torso_vel)**2))
+
+    def _reward_target(self, potential_old, w):
+        progress = float(self.potential - potential_old)
+        return 1 / (1 + np.exp(-w * progress))
 
 class RoboschoolHumanoidBullet3ExperimentalTrainingWrapper(RoboschoolHumanoidBullet3Experimental):
     def __init__(self, model_xml='humanoid.xml', reward_type='walk'):
