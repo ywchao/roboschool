@@ -175,17 +175,21 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             self.stand_height = 1.4
             self.move_speed = 10  # Run task
 
-        if self.reward_type == "walk" or self.reward_type == "walk_target":
-            traj_data = np.load('data/cmu_mocap.npz')
-            self.obs = traj_data['obs'][[0]]
-            self.qpos = traj_data['qpos'][[0]]
-            self.rstep = traj_data['rstep'][traj_data['rstep'][:,0] == 0]
-            self.lstep = traj_data['lstep'][traj_data['lstep'][:,0] == 0]
+        if self.reward_type in ("walk", "walk_slow", "walk_target", "walk_slow_target"):
+            data = np.load('data/cmu_mocap.npz')
+            self.qpos = data['qpos']
+            self.obs = data['obs']
+            if self.reward_type in ("walk", "walk_target"):
+                ind = 0
+            if self.reward_type in ("walk_slow", "walk_slow_target"):
+                ind = 3
+            self.rstep = data['rstep'][data['rstep'][:,0] == ind]
+            self.lstep = data['lstep'][data['lstep'][:,0] == ind]
 
     def create_single_player_scene(self):
         scene = super().create_single_player_scene()
 
-        if self.reward_type == "walk_target":
+        if self.reward_type in ("walk_target", "walk_slow_target"):
             scene.zero_at_running_strip_start_line = False
 
         return scene
@@ -194,14 +198,14 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         self.pre_joint_pos = None
         self.pre_torso_pos = None
 
-        if self.reward_type == "walk" or self.reward_type == "walk_target":
+        if self.reward_type in ("walk", "walk_slow", "walk_target", "walk_slow_target"):
             self._reset_expert('r', ind=0)
             qpos = self.expert_qpos[0].copy()
             qpos[[-9, -8]] = 0
             self._reset_robot_pose_and_speed(qpos)
             self.initial_z = 0.8
 
-            if self.reward_type == "walk_target":
+            if self.reward_type in ("walk_target", "walk_slow_target"):
                 self.target_reposition()
         else:
             super().humanoid_task()
@@ -252,7 +256,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             self.head_height = self.robot_body.pose().xyz()[2] + 0.28
             self.torso_xmat = self._rpy2xmat(*self.robot_body.pose().rpy())
 
-        if self.reward_type == "walk_target":
+        if self.reward_type in ("walk_target", "walk_slow_target"):
             self.target_timeout -= 1
             if self.walk_target_dist < 0.2 or self.target_timeout <= 0:
                 self.target_reposition()
@@ -320,16 +324,19 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             move = (5*move + 1) / 6
             self.rewards = [small_control * stand_reward * move]
 
-        if self.reward_type == "walk" or self.reward_type == "walk_target":
+        if self.reward_type in ("walk", "walk_slow", "walk_target", "walk_slow_target"):
             self.expert_step += 1
             r_joint_pos = self._reward_joint_pos(cur_joint_pos, 1.0000)
             r_joint_vel = self._reward_joint_vel(cur_joint_pos, 0.0100)
 
-            if self.reward_type == "walk":
-                r_torso_vel = self._reward_torso_vel(cur_torso_pos, 1.0000)
+            if self.reward_type in ("walk", "walk_slow"):
+                if self.reward_type == "walk":
+                    r_torso_vel = self._reward_torso_vel(cur_torso_pos, 1.0000)
+                if self.reward_type == "walk_slow":
+                    r_torso_vel = self._reward_torso_vel(cur_torso_pos, 10.0000)
                 self.rewards = [0.5000 * r_joint_pos, 0.0500 * r_joint_vel, 0.1000 * r_torso_vel]
 
-            if self.reward_type == "walk_target":
+            if self.reward_type in ("walk_target", "walk_slow_target"):
                 potential_old = self.potential
                 self.potential = self.calc_potential()
                 r_target = self._reward_target(potential_old, 10.0000)
