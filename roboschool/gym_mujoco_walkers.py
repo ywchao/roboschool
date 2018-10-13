@@ -119,8 +119,8 @@ class RoboschoolHumanoid(RoboschoolForwardWalkerMujocoXML):
 class RoboschoolHumanoidBullet3(RoboschoolForwardWalkerMujocoXML):
     foot_list = ["right_foot", "left_foot"]
 
-    def __init__(self, model_xml='humanoid.xml'):
-        RoboschoolForwardWalkerMujocoXML.__init__(self, model_xml, 'torso', action_dim=21, obs_dim=52, power=0.41)
+    def __init__(self, model_xml='humanoid.xml', obs_dim=52):
+        RoboschoolForwardWalkerMujocoXML.__init__(self, model_xml, 'torso', action_dim=21, obs_dim=obs_dim, power=0.41)
         # 21 joints, 6 of them important for walking (hip, knee, ankle), others may as well be turned off, 21/6 = 3.5
         self.electricity_cost  = 3.5*RoboschoolForwardWalkerMujocoXML.electricity_cost
         self.stall_torque_cost = 3.5*RoboschoolForwardWalkerMujocoXML.stall_torque_cost
@@ -167,8 +167,8 @@ class RoboschoolHumanoidBullet3(RoboschoolForwardWalkerMujocoXML):
         return +2 if z > 0.78 else -1   # 2 here because 21 joints produce a lot of electricity cost just from policy noise, living must be better than dying
 
 class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
-    def __init__(self, model_xml='humanoid.xml', reward_type='walk'):
-        RoboschoolHumanoidBullet3.__init__(self, model_xml)
+    def __init__(self, model_xml='humanoid.xml', obs_dim=52, reward_type='walk'):
+        RoboschoolHumanoidBullet3.__init__(self, model_xml, obs_dim)
         self.reward_type = reward_type
 
         if self.reward_type == "dm_control":
@@ -176,7 +176,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             self.move_speed = 10  # Run task
 
         if self.reward_type in ("walk", "walk_slow", "walk_target", "walk_slow_target"):
-            data = np.load('data/cmu_mocap.npz')
+            data = np.load(os.path.join(os.path.dirname(__file__), "data/cmu_mocap_walk.npz"))
             self.qpos = data['qpos']
             self.obs = data['obs']
             if self.reward_type in ("walk", "walk_target"):
@@ -185,6 +185,12 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                 ind = 3
             self.rstep = data['rstep'][data['rstep'][:,0] == ind]
             self.lstep = data['lstep'][data['lstep'][:,0] == ind]
+
+        if self.reward_type == "turn":
+            data = np.load(os.path.join(os.path.dirname(__file__), "data/cmu_mocap_turn.npz"))
+            self.qpos = data['qpos']
+            self.obs = data['obs']
+            self.turn = data['lturn']
 
     def create_single_player_scene(self):
         scene = super().create_single_player_scene()
@@ -198,28 +204,46 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         self.pre_joint_pos = None
         self.pre_torso_pos = None
 
-        if self.reward_type in ("walk", "walk_slow", "walk_target", "walk_slow_target"):
-            self._reset_expert('r', ind=0)
-            qpos = self.expert_qpos[0].copy()
-            qpos[[-9, -8]] = 0
-            self._reset_robot_pose_and_speed(qpos)
-            self.initial_z = 0.8
+        self.initial_z = 0.8
 
-            if self.reward_type in ("walk_target", "walk_slow_target"):
-                self.target_reposition()
+        if self.reward_type in ("walk", "walk_slow", "walk_target", "walk_slow_target"):
+            self._reset_expert(foot='r', ind=0)
+            self._reset_robot_pose_and_speed(self.expert_qpos[0])
+        elif self.reward_type == "turn":
+            self._reset_expert()
+            self._reset_robot_pose_and_speed(self.expert_qpos[0])
         else:
             super().humanoid_task()
 
-    def _reset_expert(self, foot, ind=None):
-        assert foot == 'r' or foot == 'l'
-        if foot == 'r':
-            s = self.np_random.randint(len(self.rstep)) if ind is None else ind
-            s = self.rstep[s]
-        if foot == 'l':
-            s = self.np_random.randint(len(self.lstep)) if ind is None else ind
-            s = self.lstep[s]
-        self.cur_foot = foot
-        self.expert_qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
+        if self.reward_type in ("walk_target", "walk_slow_target"):
+            self.target_reposition()
+
+    def _reset_expert(self, **kwargs):
+        if self.reward_type in ("walk", "walk_slow", "walk_target", "walk_slow_target"):
+            assert kwargs['foot'] == 'r' or kwargs['foot'] == 'l'
+            if kwargs['foot'] == 'r':
+                s = self.np_random.randint(len(self.rstep)) if 'ind' not in kwargs else kwargs['ind']
+                s = self.rstep[s]
+            if kwargs['foot'] == 'l':
+                s = self.np_random.randint(len(self.lstep)) if 'ind' not in kwargs else kwargs['ind']
+                s = self.lstep[s]
+            self.cur_foot = kwargs['foot']
+            qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
+            # Move root of the first frame to the 2D origin
+            qpos[:, -9:-7] -= qpos[0, -9:-7]
+        elif self.reward_type == "turn":
+            s = self.turn[2]
+            qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
+            # Move root of the first frame to the 2D origin and set yaw randomly
+            yaw = self.np_random.uniform(-np.pi, np.pi)
+            R = self._rpy2xmat(0, 0, yaw)
+            qpos[:, -4] += yaw
+            qpos[:, -9:-7] = (qpos[:, -9:-7] - qpos[0, -9:-7]).dot(R[:2,:2])
+            qpos[:, -3:-1] = qpos[:, -3:-1].dot(R[:2,:2])
+        else:
+            assert False
+
+        self.expert_qpos = qpos
         self.expert_step = 0
 
     def _reset_robot_pose_and_speed(self, qpos):
@@ -263,6 +287,11 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                 state = super().calc_state()
                 self.potential = self.calc_potential()       # avoid reward jump
 
+        if self.reward_type == "turn":
+            state = np.hstack((state[[0]], state[3:]))
+            done = 1.0 if self.expert_step == len(self.expert_qpos) - 1 else 0.0
+            state = np.hstack((state, [done]))
+
         return state
 
     def _rpy2xmat(self, r, p, y):
@@ -302,6 +331,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
 
         cur_joint_pos = np.array([j.current_position()[0] for j in self.ordered_joints], dtype=np.float32)
         cur_torso_pos = np.array(self.robot_body.pose().xyz(), dtype=np.float32)
+        cur_torso_rot = np.array(self.robot_body.pose().rpy(), dtype=np.float32)
 
         if self.reward_type == "dm_control":
             standing = rewards.tolerance(self.head_height,
@@ -344,9 +374,24 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
 
             if self.expert_step == len(self.expert_qpos) - 1:
                 if self.cur_foot == 'r':
-                    self._reset_expert('l')
+                    self._reset_expert(foot='l')
                 else:
-                    self._reset_expert('r')
+                    self._reset_expert(foot='r')
+
+        if self.reward_type == "turn":
+            r_joint_pos = self._reward_joint_pos(cur_joint_pos,  1.0000)
+            r_torso_rot = self._reward_torso_rot(cur_torso_rot, 10.0000)
+
+            if self.expert_step == len(self.expert_qpos) - 1:
+                r_ecost = self._reward_ecost(a)
+                self.rewards = [0.5000 * r_joint_pos, 0.1000 * r_torso_rot, 0.5000 * r_ecost]
+            else:
+                self.expert_step += 1
+                r_joint_vel = self._reward_joint_vel(cur_joint_pos,  0.0100)
+                r_torso_vel = self._reward_torso_vel(cur_torso_pos, 10.0000)
+                self.rewards = [0.5000 * r_joint_pos, 0.0500 * r_joint_vel, 0.1000 * r_torso_vel, 0.1000 * r_torso_rot]
+
+            done = done or self._done_torso_rot(cur_torso_rot, np.pi / 4)
 
         self.pre_joint_pos = cur_joint_pos
         self.pre_torso_pos = cur_torso_pos
@@ -377,13 +422,31 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                          self.expert_qpos[self.expert_step - 1, -9:-6]) / 0.0165
         return np.exp(-w * np.sum((act_torso_vel - ref_torso_vel)**2))
 
+    def _reward_torso_rot(self, cur_torso_rot, w):
+        act_torso_rot = cur_torso_rot
+        ref_torso_rot = self.expert_qpos[self.expert_step, -6:-3]
+        return np.exp(-w * np.sum(self._ang_diff(act_torso_rot, ref_torso_rot)**2))
+
     def _reward_target(self, potential_old, w):
         progress = float(self.potential - potential_old)
         return 1 / (1 + np.exp(-w * progress))
 
+    def _reward_ecost(self, a):
+        electricity_cost  = self.electricity_cost  * float(np.abs(a*self.joint_speeds).mean())  # let's assume we have DC motor with controller, and reverse current braking
+        electricity_cost += self.stall_torque_cost * float(np.square(a).mean())
+        return electricity_cost
+
+    def _done_torso_rot(self, cur_torso_rot, thresh):
+        act_torso_rot = cur_torso_rot
+        ref_torso_rot = self.expert_qpos[self.expert_step, -6:-3]
+        return np.abs(self._ang_diff(cur_torso_rot, ref_torso_rot)[2]) > thresh
+
+    def _ang_diff(self, a, b):
+        return (a - b) - (((a - b) - np.pi) // (2 * np.pi) + 1) * (2 * np.pi)
+
 class RoboschoolHumanoidBullet3ExperimentalTrainingWrapper(RoboschoolHumanoidBullet3Experimental):
-    def __init__(self, model_xml='humanoid.xml', reward_type='walk'):
-        RoboschoolHumanoidBullet3Experimental.__init__(self, model_xml, reward_type)
+    def __init__(self, model_xml='humanoid.xml', obs_dim=52, reward_type='walk'):
+        RoboschoolHumanoidBullet3Experimental.__init__(self, model_xml, obs_dim, reward_type)
 
     def humanoid_task(self):
         # Enables a different iniitialization strategy during training
