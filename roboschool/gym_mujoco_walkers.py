@@ -119,8 +119,8 @@ class RoboschoolHumanoid(RoboschoolForwardWalkerMujocoXML):
 class RoboschoolHumanoidBullet3(RoboschoolForwardWalkerMujocoXML):
     foot_list = ["right_foot", "left_foot"]
 
-    def __init__(self, model_xml='humanoid.xml', obs_dim=52):
-        RoboschoolForwardWalkerMujocoXML.__init__(self, model_xml, 'torso', action_dim=21, obs_dim=obs_dim, power=0.41)
+    def __init__(self, model_xml='humanoid.xml'):
+        RoboschoolForwardWalkerMujocoXML.__init__(self, model_xml, 'torso', action_dim=21, obs_dim=52, power=0.41)
         # 21 joints, 6 of them important for walking (hip, knee, ankle), others may as well be turned off, 21/6 = 3.5
         self.electricity_cost  = 3.5*RoboschoolForwardWalkerMujocoXML.electricity_cost
         self.stall_torque_cost = 3.5*RoboschoolForwardWalkerMujocoXML.stall_torque_cost
@@ -167,8 +167,8 @@ class RoboschoolHumanoidBullet3(RoboschoolForwardWalkerMujocoXML):
         return +2 if z > 0.78 else -1   # 2 here because 21 joints produce a lot of electricity cost just from policy noise, living must be better than dying
 
 class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
-    def __init__(self, model_xml='humanoid.xml', obs_dim=52, reward_type='walk'):
-        RoboschoolHumanoidBullet3.__init__(self, model_xml, obs_dim)
+    def __init__(self, model_xml='humanoid.xml', reward_type='walk'):
+        RoboschoolHumanoidBullet3.__init__(self, model_xml)
         self.reward_type = reward_type
 
         if self.reward_type == "dm_control":
@@ -287,10 +287,20 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                 state = super().calc_state()
                 self.potential = self.calc_potential()       # avoid reward jump
 
+        j = np.array([j.current_relative_position() for j in self.ordered_joints], dtype=np.float32).flatten()
+        z = self.body_xyz[2] - self.initial_z
+        r, p, _ = self.body_rpy
+        v = 0.3 * np.dot(self.rot_minus_yaw, self.robot_body.speed())
+        more = np.array([z, r, p, *v], dtype=np.float32)
+
+        if self.reward_type in ("walk", "walk_slow", "walk_target", "walk_slow_target"):
+            goal = np.array([np.sin(self.angle_to_target), np.cos(self.angle_to_target)], dtype=np.float32)
+            state = np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [goal]), -5, +5)
+
         if self.reward_type == "turn":
-            state = np.hstack((state[[0]], state[3:]))
             done = 1.0 if self.expert_step == len(self.expert_qpos) - 1 else 0.0
-            state = np.hstack((state, [done]))
+            goal = np.array([done, 0.0], dtype=np.float32)
+            state = np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [goal]), -5, +5)
 
         return state
 
@@ -445,8 +455,8 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         return (a - b) - (((a - b) - np.pi) // (2 * np.pi) + 1) * (2 * np.pi)
 
 class RoboschoolHumanoidBullet3ExperimentalTrainingWrapper(RoboschoolHumanoidBullet3Experimental):
-    def __init__(self, model_xml='humanoid.xml', obs_dim=52, reward_type='walk'):
-        RoboschoolHumanoidBullet3Experimental.__init__(self, model_xml, obs_dim, reward_type)
+    def __init__(self, model_xml='humanoid.xml', reward_type='walk'):
+        RoboschoolHumanoidBullet3Experimental.__init__(self, model_xml, reward_type)
 
     def humanoid_task(self):
         # Enables a different iniitialization strategy during training

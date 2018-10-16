@@ -167,7 +167,7 @@ register(
     max_episode_steps=300,
     reward_threshold=3500.0,
     tags={ "pg_complexity": 100*1000000 },
-    kwargs={ "obs_dim": 51, "reward_type": "turn" },
+    kwargs={ "reward_type": "turn" },
     )
 register(
     id='RoboschoolHumanoidBullet3-rTurn-train-v1',
@@ -175,7 +175,7 @@ register(
     max_episode_steps=300,
     reward_threshold=3500.0,
     tags={ "pg_complexity": 100*1000000 },
-    kwargs={ "obs_dim": 51, "reward_type": "turn" },
+    kwargs={ "reward_type": "turn" },
     )
 
 
