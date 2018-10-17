@@ -298,8 +298,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             state = np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [goal]), -5, +5)
 
         if self.reward_type == "turn":
-            done = 1.0 if self.expert_step == len(self.expert_qpos) - 1 else 0.0
-            goal = np.array([done, 0.0], dtype=np.float32)
+            goal = np.array([0.0, 0.0], dtype=np.float32)
             state = np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [goal]), -5, +5)
 
         return state
