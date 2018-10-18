@@ -1,0 +1,61 @@
+<?xml version="1.0"?>
+<robot name="chair">
+
+  <link name="chair">
+    <visual>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+      <geometry>
+        <mesh filename="chair.obj"/>
+      </geometry>
+    </visual>
+
+    <collision>
+      <geometry>
+        <mesh filename="part1.obj"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+    </collision>
+
+    <collision>
+      <geometry>
+        <mesh filename="part2.obj"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+    </collision>
+
+    <collision>
+      <geometry>
+        <mesh filename="part3.obj"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+    </collision>
+
+    <collision>
+      <geometry>
+        <mesh filename="part4.obj"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+    </collision>
+
+    <collision>
+      <geometry>
+        <mesh filename="part5.obj"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+    </collision>
+
+    <collision>
+      <geometry>
+        <mesh filename="part6.obj"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 0"/>
+    </collision>
+
+    <inertial>
+      <mass value="1000.0"/>
+      <inertia ixx="1000.0" iyy="1000.0" izz="1000.0"/>
+    </inertial>
+  </link>
+
+</robot>
+
