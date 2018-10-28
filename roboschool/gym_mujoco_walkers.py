@@ -186,11 +186,14 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             self.rstep = data['rstep'][data['rstep'][:,0] == ind]
             self.lstep = data['lstep'][data['lstep'][:,0] == ind]
 
-        if self.reward_type == "turn":
+        if self.reward_type in ("turn_left", "turn_right"):
             data = np.load(os.path.join(os.path.dirname(__file__), "data/cmu_mocap_turn.npz"))
             self.qpos = data['qpos']
             self.obs = data['obs']
-            self.turn = data['lturn']
+            if self.reward_type == "turn_left":
+                self.turn = data['lturn']
+            if self.reward_type == "turn_right":
+                self.turn = data['rturn']
 
         if self.reward_type == "sit":
             data = np.load(os.path.join(os.path.dirname(__file__), "data/cmu_mocap_sit.npz"))
@@ -218,7 +221,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         if self.reward_type in ("walk", "walk_slow", "walk_target", "walk_slow_target"):
             self._reset_expert(foot='r', ind=0)
             self._reset_robot_pose_and_speed(self.expert_qpos[0])
-        elif self.reward_type == "turn":
+        elif self.reward_type in ("turn_left", "turn_right"):
             self._reset_expert()
             self._reset_robot_pose_and_speed(self.expert_qpos[0])
         elif self.reward_type == "sit":
@@ -246,7 +249,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
             # Move root of the first frame to the 2D origin
             qpos[:, -9:-7] -= qpos[0, -9:-7]
-        elif self.reward_type == "turn":
+        elif self.reward_type in ("turn_left", "turn_right"):
             s = self.turn[2]
             qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
             # Move root of the first frame to the 2D origin and set yaw randomly
@@ -338,7 +341,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             goal = np.array([np.sin(self.angle_to_target), np.cos(self.angle_to_target)], dtype=np.float32)
             state = np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [goal]), -5, +5)
 
-        if self.reward_type == "turn":
+        if self.reward_type in ("turn_left", "turn_right"):
             goal = np.array([0.0, 0.0], dtype=np.float32)
             state = np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [goal]), -5, +5)
 
@@ -443,7 +446,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                 else:
                     self._reset_expert(foot='r')
 
-        if self.reward_type == "turn":
+        if self.reward_type in ("turn_left", "turn_right"):
             r_joint_pos = self._reward_joint_pos(cur_joint_pos,  1.0000)
             r_torso_rot = self._reward_torso_rot(cur_torso_rot, 10.0000)
 
