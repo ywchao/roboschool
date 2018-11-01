@@ -447,28 +447,29 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                     self._reset_expert(foot='r')
 
         if self.reward_type in ("turn_left", "turn_right"):
-            r_joint_pos = self._reward_joint_pos(cur_joint_pos,  1.0000)
-            r_torso_rot = self._reward_torso_rot(cur_torso_rot, 10.0000)
-
             if self.expert_step == len(self.expert_qpos) - 1:
+                r_joint_pos = self._reward_joint_pos(cur_joint_pos,  1.0000)
+                r_torso_rot = self._reward_torso_rot(cur_torso_rot, 10.0000)
                 r_ecost = self._reward_ecost(a)
                 self.rewards = [0.5000 * r_joint_pos, 0.1000 * r_torso_rot, 0.5000 * r_ecost]
             else:
                 self.expert_step += 1
+                r_joint_pos = self._reward_joint_pos(cur_joint_pos,  1.0000)
                 r_joint_vel = self._reward_joint_vel(cur_joint_pos,  0.0100)
                 r_torso_vel = self._reward_torso_vel(cur_torso_pos, 10.0000)
+                r_torso_rot = self._reward_torso_rot(cur_torso_rot, 10.0000)
                 self.rewards = [0.5000 * r_joint_pos, 0.0500 * r_joint_vel, 0.1000 * r_torso_vel, 0.1000 * r_torso_rot]
 
             done = done or self._done_torso_rot(cur_torso_rot, np.pi / 4)
 
         if self.reward_type == "sit":
-            r_joint_pos = self._reward_joint_pos(cur_joint_pos, 1.0000)
-
             if self.expert_step == len(self.expert_qpos) - 1:
+                r_joint_pos = self._reward_joint_pos(cur_joint_pos, 1.0000)
                 r_ecost = self._reward_ecost(a)
                 self.rewards = [0.5000 * r_joint_pos, 0.1000 * r_ecost]
             else:
                 self.expert_step += 1
+                r_joint_pos = self._reward_joint_pos(cur_joint_pos, 1.0000)
                 r_joint_vel = self._reward_joint_vel(cur_joint_pos, 0.0100)
                 potential_old = self.potential
                 self.potential = self.calc_potential()
