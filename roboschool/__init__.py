@@ -194,6 +194,38 @@ register(
     kwargs={ "reward_type": "turn_right" },
     )
 register(
+    id='RoboschoolHumanoidBullet3-rTurnLeftFromWalkSlowTarget-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3Experimental',
+    max_episode_steps=300,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "turn_left_from_walk_slow_target" },
+    )
+register(
+    id='RoboschoolHumanoidBullet3-rTurnLeftFromWalkSlowTarget-train-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3ExperimentalTrainingWrapper',
+    max_episode_steps=300,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "turn_left_from_walk_slow_target" },
+    )
+register(
+    id='RoboschoolHumanoidBullet3-rTurnRightFromWalkSlowTarget-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3Experimental',
+    max_episode_steps=300,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "turn_right_from_walk_slow_target" },
+    )
+register(
+    id='RoboschoolHumanoidBullet3-rTurnRightFromWalkSlowTarget-train-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3ExperimentalTrainingWrapper',
+    max_episode_steps=300,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "turn_right_from_walk_slow_target" },
+    )
+register(
     id='RoboschoolHumanoidBullet3-rSit-v1',
     entry_point='roboschool:RoboschoolHumanoidBullet3Experimental',
     max_episode_steps=300,
