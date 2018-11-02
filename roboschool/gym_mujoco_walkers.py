@@ -249,7 +249,8 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
             # Move root of the first frame to the 2D origin
             qpos[:, -9:-7] -= qpos[0, -9:-7]
-        elif self.reward_type in ("turn_left", "turn_right"):
+
+        if self.reward_type in ("turn_left", "turn_right"):
             s = self.turn[2]
             qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
             # Move root of the first frame to the 2D origin and set yaw randomly
@@ -258,7 +259,8 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             qpos[:, -4] += yaw
             qpos[:, -9:-7] = (qpos[:, -9:-7] - qpos[0, -9:-7]).dot(R[:2,:2])
             qpos[:, -3:-1] = qpos[:, -3:-1].dot(R[:2,:2])
-        elif self.reward_type == "sit":
+
+        if self.reward_type == "sit":
             s = self.sitd[0]
             qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
             # Move root of the first frame to the 2D origin
@@ -273,8 +275,6 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             qpos[1:, -1] = (qpos[1:, -7] - qpos[:-1, -7]) / 0.0165
             # Set position in chair centered coordinates
             qpos[:, -9] += 0.4000
-        else:
-            assert False
 
         self.expert_qpos = qpos
         self.expert_step = 0
