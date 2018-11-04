@@ -564,3 +564,151 @@ class RoboschoolHumanoidBullet3ExperimentalTrainingWrapper(RoboschoolHumanoidBul
             self._reset_chair()
         else:
             super().humanoid_task()
+
+class RoboschoolHumanoidBullet3HighLevelExperimental(RoboschoolHumanoidBullet3Experimental):
+    def __init__(self, model_xml='humanoid.xml', reward_type='walk_slow_easy'):
+        RoboschoolHumanoidBullet3Experimental.__init__(self, model_xml, reward_type)
+
+        self.qpos = {}
+        data = np.load(os.path.join(os.path.dirname(__file__), "data/cmu_mocap_walk.npz"))
+        self.qpos['walk'] = data['qpos']
+        ind = 3
+        self.rstep = data['rstep'][data['rstep'][:,0] == ind]
+        self.lstep = data['lstep'][data['lstep'][:,0] == ind]
+
+        # Should set max_episode_steps in __init__.py to a mulitple of timestep,
+        # otherwise the reward will be nan at max_episode_steps.
+        self.timestep = 30
+
+        if self.reward_type in ("walk_slow_easy", "walk_slow_hard"):
+            self.action_space = gym.spaces.Dict(dict(
+                meta=gym.spaces.Dict(dict(
+                    switch=gym.spaces.Discrete(1),
+                    walk=gym.spaces.Box(-np.inf, np.inf, shape=(2,)),
+                )),
+                walk=gym.spaces.Box(-1, 1, shape=(21,)),
+            ))
+            self.observation_space = gym.spaces.Dict(dict(
+                switch=gym.spaces.Box(-1, 0, shape=(), dtype=np.int32),
+                meta=gym.spaces.Box(-np.inf, np.inf, shape=(57,)),
+                walk=gym.spaces.Box(-np.inf, np.inf, shape=(52,)),
+            ))
+
+    def humanoid_task(self):
+        self.walk_target_x = 0
+        self.walk_target_y = 0
+        self.initial_z = 0.8
+        self.on_support = False
+
+        if self.reward_type in ("walk_slow_easy", "walk_slow_hard"):
+            s = self.rstep[0]
+            qpos = self.qpos['walk'][s[0]][s[1]:s[1] + s[2] + 1][0].copy()
+            theta = self.np_random.uniform(-np.pi, np.pi)
+            rad = self.np_random.uniform(2, 5)
+            px = np.cos(theta) * rad
+            py = np.sin(theta) * rad
+            if self.reward_type == "walk_slow_easy":
+                yaw = theta + np.pi + self.np_random.uniform(low=-np.pi/4, high=np.pi/4)
+            if self.reward_type == "walk_slow_hard":
+                yaw = theta + np.pi + self.np_random.uniform(low=-np.pi, high=np.pi)
+            R = self._rpy2xmat(0, 0, yaw)
+            qpos[-4] += yaw
+            qpos[-9:-7] = [px, py]
+            qpos[-3:-1] = qpos[-3:-1].dot(R[:2,:2])
+
+        self._reset_robot_pose_and_speed(qpos)
+        self._reset_chair()
+
+    def calc_state(self, step=False):
+        state = RoboschoolHumanoidBullet3.calc_state(self)
+
+        j = np.array([j.current_relative_position() for j in self.ordered_joints], dtype=np.float32).flatten()
+        z = self.body_xyz[2] - self.initial_z
+        r, p, _ = self.body_rpy
+        v = 0.3 * np.dot(self.rot_minus_yaw, self.robot_body.speed())
+        more = np.array([z, r, p, *v], dtype=np.float32)
+
+        self.sit_target_dist = np.linalg.norm( self.parts['pelvis'].pose().xyz() - self.sit_target_pos )
+
+        R = self._rpy2xmat(*self.robot_body.pose().rpy())
+        p = R.dot(self.sit_target_pos - self.parts['pelvis'].pose().xyz())
+        q = self.robot_body.pose().quatertion()
+        q = (q * np.array([[-1, -1, -1, 1]]))[0]
+
+        if self.reward_type in ("walk_slow_easy", "walk_slow_hard"):
+            goal = np.array([np.sin(self.angle_to_target), np.cos(self.angle_to_target)], dtype=np.float32)
+            state = {
+                'meta': np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [p] + [q]), -5, +5),
+                'walk': np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [goal]), -5, +5),
+            }
+
+        # Currently step == False is expected to occurs only during _reset(),
+        # but this should also handle more general cases (i.e. self.frame != 0).
+        if step:
+            state['switch'] = -1 if (self.frame + 1) % self.timestep == 0 else self.cur_switch
+        else:
+            state['switch'] = -1 if self.frame % self.timestep == 0 else self.cur_switch
+
+        return state
+
+    def calc_potential(self):
+        return - self.sit_target_dist / (self.scene.dt * self.timestep)
+
+    def _step(self, a):
+        self.cur_switch, a, goal = a
+
+        if not self.scene.multiplayer:  # if multiplayer, action first applied to all robots, then global step() called, then _step() for all robots with the same actions
+            self.apply_action(a)
+            self.scene.global_step()
+
+        if self.frame % self.timestep == 0:
+            theta, dist = goal
+            px, py = self.robot_body.pose().xyz()[:2]
+            vx, vy = self._rpy2xmat(*self.robot_body.pose().rpy())[0, :2]
+            dx = (np.cos(theta) * vx - np.sin(theta) * vy) * dist
+            dy = (np.sin(theta) * vx + np.cos(theta) * vy) * dist
+            self.walk_target_x = px + dx
+            self.walk_target_y = py + dy
+
+        state = self.calc_state(step=True)
+
+        alive = float(self.alive_bonus(self.body_xyz[2], self.body_rpy[1]))   # state[0] is body height above ground, body_rpy[1] is pitch
+        done = alive < 0
+        if not all([np.isfinite(state[k]).all() for k in state]):
+            print("~INF~")
+            done = True
+
+        for i,f in enumerate(self.feet):
+            contact_names = set(x.name for x in f.contact_list())
+            self.feet_contact[i] = 1.0 if (self.foot_ground_object_names & contact_names) else 0.0
+
+        self.on_support = self.parts['pelvis'].pose().xyz()[2] < 0.54 and "chair" in [x.name for x in self.parts['pelvis'].contact_list()]
+
+        if (self.frame + 1) % self.timestep == 0 or done:
+            if self.on_support:
+                self.rewards = [1.0]
+            else:
+                potential_old = self.potential
+                self.potential = self.calc_potential()
+                r_target = float(self.potential - potential_old)
+                self.rewards = [0.5000 * r_target]
+        else:
+            self.rewards = [0.0]
+
+        reward = sum(self.rewards) if (self.frame + 1) % self.timestep == 0 or done else float('nan')
+
+        self.frame += 1
+        if (done and not self.done) or self.frame==self.spec.timestep_limit:
+            self.episode_over(self.frame)
+        self.done += done   # 2 == 1+True
+        self.reward += sum(self.rewards)
+        self.HUD(state['meta'], a, done)
+
+        return state, reward, bool(done), {}
+
+class RoboschoolHumanoidBullet3HighLevelExperimentalTrainingWrapper(RoboschoolHumanoidBullet3HighLevelExperimental):
+    def __init__(self, model_xml='humanoid.xml', reward_type='walk_slow_easy'):
+        RoboschoolHumanoidBullet3HighLevelExperimental.__init__(self, model_xml, reward_type)
+
+    def humanoid_task(self):
+        super().humanoid_task()

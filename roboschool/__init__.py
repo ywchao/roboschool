@@ -241,6 +241,38 @@ register(
     tags={ "pg_complexity": 100*1000000 },
     kwargs={ "reward_type": "sit" },
     )
+register(
+    id='RoboschoolHumanoidBullet3HighLevel-rWalkSlowEasy-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3HighLevelExperimental',
+    max_episode_steps=990,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "walk_slow_easy" },
+    )
+register(
+    id='RoboschoolHumanoidBullet3HighLevel-rWalkSlowEasy-train-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3HighLevelExperimentalTrainingWrapper',
+    max_episode_steps=990,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "walk_slow_easy" },
+    )
+register(
+    id='RoboschoolHumanoidBullet3HighLevel-rWalkSlowHard-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3HighLevelExperimental',
+    max_episode_steps=990,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "walk_slow_hard" },
+    )
+register(
+    id='RoboschoolHumanoidBullet3HighLevel-rWalkSlowHard-train-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3HighLevelExperimentalTrainingWrapper',
+    max_episode_steps=990,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "walk_slow_hard" },
+    )
 
 
 # Atlas
@@ -274,6 +306,8 @@ from roboschool.gym_mujoco_walkers import RoboschoolHumanoid
 from roboschool.gym_mujoco_walkers import RoboschoolHumanoidBullet3
 from roboschool.gym_mujoco_walkers import RoboschoolHumanoidBullet3Experimental
 from roboschool.gym_mujoco_walkers import RoboschoolHumanoidBullet3ExperimentalTrainingWrapper
+from roboschool.gym_mujoco_walkers import RoboschoolHumanoidBullet3HighLevelExperimental
+from roboschool.gym_mujoco_walkers import RoboschoolHumanoidBullet3HighLevelExperimentalTrainingWrapper
 from roboschool.gym_humanoid_flagrun import RoboschoolHumanoidFlagrun
 from roboschool.gym_humanoid_flagrun import RoboschoolHumanoidFlagrunHarder
 from roboschool.gym_atlas import RoboschoolAtlasForwardWalk
