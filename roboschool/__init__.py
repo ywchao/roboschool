@@ -242,6 +242,22 @@ register(
     kwargs={ "reward_type": "sit" },
     )
 register(
+    id='RoboschoolHumanoidBullet3-rSitFromTurn-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3Experimental',
+    max_episode_steps=300,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "sit_from_turn" },
+    )
+register(
+    id='RoboschoolHumanoidBullet3-rSitFromTurn-train-v1',
+    entry_point='roboschool:RoboschoolHumanoidBullet3ExperimentalTrainingWrapper',
+    max_episode_steps=300,
+    reward_threshold=3500.0,
+    tags={ "pg_complexity": 100*1000000 },
+    kwargs={ "reward_type": "sit_from_turn" },
+    )
+register(
     id='RoboschoolHumanoidBullet3HighLevel-rWalkSlowEasy-v1',
     entry_point='roboschool:RoboschoolHumanoidBullet3HighLevelExperimental',
     max_episode_steps=990,
