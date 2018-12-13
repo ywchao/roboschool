@@ -222,9 +222,11 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         return scene
 
     def humanoid_task(self):
+        self.scene.stadium = self.scene.cpp_world.load_thingy(
+            os.path.join(os.path.dirname(__file__), "models_outdoor/stadium/plane100.obj"),
+            self.scene.stadium.pose(), 1.0, 0, 0xFFFFFF, True)
         self.pre_joint_pos = None
         self.pre_torso_pos = None
-
         self.initial_z = 0.8
 
         if self.reward_type in ("walk", "walk_slow", "walk_target", "walk_slow_target"):
@@ -574,9 +576,11 @@ class RoboschoolHumanoidBullet3ExperimentalTrainingWrapper(RoboschoolHumanoidBul
         RoboschoolHumanoidBullet3Experimental.__init__(self, model_xml, reward_type)
 
     def humanoid_task(self):
+        self.scene.stadium = self.scene.cpp_world.load_thingy(
+            os.path.join(os.path.dirname(__file__), "models_outdoor/stadium/plane100.obj"),
+            self.scene.stadium.pose(), 1.0, 0, 0xFFFFFF, True)
         self.pre_joint_pos = None
         self.pre_torso_pos = None
-
         self.initial_z = 0.8
 
         # Enables a different iniitialization strategy during training
@@ -629,6 +633,9 @@ class RoboschoolHumanoidBullet3HighLevelExperimental(RoboschoolHumanoidBullet3Ex
             ))
 
     def humanoid_task(self):
+        self.scene.stadium = self.scene.cpp_world.load_thingy(
+            os.path.join(os.path.dirname(__file__), "models_outdoor/stadium/plane100.obj"),
+            self.scene.stadium.pose(), 1.0, 0, 0xFFFFFF, True)
         self.walk_target_x = 0
         self.walk_target_y = 0
         self.initial_z = 0.8
