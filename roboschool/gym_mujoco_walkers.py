@@ -213,6 +213,18 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                 idata2 = np.load(os.path.join(os.path.dirname(__file__), "data/sample_turn_right_from_walk_slow_target.npz"))
                 self.iqpos = np.concatenate((idata1['qpos'],idata2['qpos']))
 
+        if self.reward_type == "holistic":
+            data1 = np.load(os.path.join(os.path.dirname(__file__), "data/cmu_mocap_holistic.npz"))
+            self.qpos1 = data1['qpos']
+            self.obs1 = data1['obs']
+            self.holist = data1['holist']
+            data2 = np.load(os.path.join(os.path.dirname(__file__), "data/cmu_mocap_sit.npz"))
+            self.qpos2 = data2['qpos']
+            self.obs2 = data2['obs']
+            self.sitd = data2['sitd']
+            self.offsetz = data2['offsetz']
+            self.offsetx = data2['offsetx']
+
     def create_single_player_scene(self):
         scene = super().create_single_player_scene()
 
@@ -238,13 +250,16 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         elif self.reward_type in ("sit", "sit_from_turn"):
             self._reset_expert()
             self._reset_robot_pose_and_speed(self.expert_qpos[0])
+        elif self.reward_type == "holistic":
+            self._reset_expert()
+            self._reset_robot_pose_and_speed(self.expert_qpos[0])
         else:
             super().humanoid_task()
 
         if self.reward_type in ("walk_target", "walk_slow_target"):
             self.target_reposition()
 
-        if self.reward_type in ("sit", "sit_from_turn"):
+        if self.reward_type in ("sit", "sit_from_turn", "holistic"):
             self._reset_chair()
 
     def _reset_expert(self, **kwargs):
@@ -281,9 +296,12 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                 iqpos[-3:-1] = iqpos[-3:-1].dot(R[:2,:2])
                 qpos[0] = iqpos
 
-        if self.reward_type in ("sit", "sit_from_turn"):
+        if self.reward_type in ("sit", "sit_from_turn", "holistic"):
             s = self.sitd[0]
-            qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
+            if self.reward_type in ("sit", "sit_from_turn"):
+                qpos = self.qpos[s[0]][s[1]:s[1] + s[2] + 1].copy()
+            if self.reward_type == "holistic":
+                qpos = self.qpos2[s[0]][s[1]:s[1] + s[2] + 1].copy()
             # Move root of the first frame to the 2D origin
             qpos[:, -4] += np.pi/2
             R = self._rpy2xmat(0, 0, np.pi/2)
@@ -295,7 +313,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             qpos[1:, -3] = (qpos[1:, -9] - qpos[:-1, -9]) / 0.0165
             qpos[1:, -1] = (qpos[1:, -7] - qpos[:-1, -7]) / 0.0165
             # Set position in chair centered coordinates
-            if self.reward_type == "sit":
+            if self.reward_type in ("sit", "holistic"):
                 qpos[:, -9] += 0.4000
             if self.reward_type == "sit_from_turn":
                 # Add small variation to starting 2D position and yaw
@@ -317,6 +335,24 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                 iqpos[-9:-7] = [dx, dy]
                 iqpos[-3:-1] = iqpos[-3:-1].dot(R[:2,:2])
                 qpos = np.concatenate((iqpos[None], qpos))
+
+        if self.reward_type == "holistic":
+            s = self.holist[0]
+            qpos1 = self.qpos1[s[0]][s[1]:s[1] + s[2] + 1].copy()
+            # Move root of the first frame to the 2D origin
+            yaw = -qpos1[-1, -4]
+            qpos1[:, -4] += yaw
+            R = self._rpy2xmat(0, 0, yaw)
+            qpos1[:, -9:-7] = (qpos1[:, -9:-7] - qpos1[0, -9:-7]).dot(R[:2,:2])
+            qpos1[:, -3:-1] = qpos1[:, -3:-1].dot(R[:2,:2])
+            # Move root so that it will be just in front of the chair before sitting down
+            qpos1[:, -9:-7] -= qpos1[180, -9:-7] - [0.4000, -0.1000]
+            # Extract relevant segment for holistic
+            qpos1 = qpos1[80:160]
+            # Extract relevant segment for sit
+            qpos2 = qpos[35:]
+            # Concatenate holistic and sit
+            qpos = np.concatenate((qpos1, qpos2))
 
         self.expert_qpos = qpos
         self.expert_step = 0
@@ -396,6 +432,12 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
             q = (q * np.array([[-1, -1, -1, 1]]))[0]
             state = np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [p] + [q]), -5, +5)
 
+        if self.reward_type == "holistic":
+            self.sit_target_dist = np.linalg.norm( self.parts['pelvis'].pose().xyz() - self.sit_target_pos )
+
+            goal = np.array([0.0, 0.0], dtype=np.float32)
+            state = np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [goal]), -5, +5)
+
         return state
 
     def _rpy2xmat(self, r, p, y):
@@ -417,7 +459,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
         return Rr.dot(Rp.dot(Ry))
 
     def calc_potential(self):
-        if self.reward_type in ("sit", "sit_from_turn"):
+        if self.reward_type in ("sit", "sit_from_turn", "holistic"):
             return - self.sit_target_dist / self.scene.dt
         else:
             return super().calc_potential()
@@ -504,7 +546,7 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
 
             done = done or self._done_torso_rot(cur_torso_rot, np.pi / 4)
 
-        if self.reward_type in ("sit", "sit_from_turn"):
+        if self.reward_type in ("sit", "sit_from_turn", "holistic"):
             if self.expert_step == len(self.expert_qpos) - 1:
                 r_joint_pos = self._reward_joint_pos(cur_joint_pos, 1.0000)
                 r_ecost = self._reward_ecost(a)
@@ -516,9 +558,14 @@ class RoboschoolHumanoidBullet3Experimental(RoboschoolHumanoidBullet3):
                 potential_old = self.potential
                 self.potential = self.calc_potential()
                 r_target = float(self.potential - potential_old)
-                self.rewards = [0.5000 * r_joint_pos, 0.0500 * r_joint_vel, 0.5000 * r_target]
+                if self.reward_type in ("sit", "sit_from_turn"):
+                    self.rewards = [0.5000 * r_joint_pos, 0.0500 * r_joint_vel, 0.5000 * r_target]
+                if self.reward_type == "holistic":
+                    self.rewards = [0.5000 * r_joint_pos, 0.0500 * r_joint_vel, 0.1000 * r_target]
 
             done = state[0]+self.initial_z < 0.54 or not np.isfinite(state).all()
+            if self.reward_type == "holistic":
+                done = done or self._done_torso_rot(cur_torso_rot, np.pi / 4)
 
         self.pre_joint_pos = cur_joint_pos
         self.pre_torso_pos = cur_torso_pos
@@ -584,16 +631,19 @@ class RoboschoolHumanoidBullet3ExperimentalTrainingWrapper(RoboschoolHumanoidBul
         self.initial_z = 0.8
 
         # Enables a different iniitialization strategy during training
-        if self.reward_type in ("sit", "sit_from_turn"):
+        if self.reward_type in ("sit", "sit_from_turn", "holistic"):
             self._reset_expert()
             # Randomly sample a starting frame
             if self.reward_type == "sit":
                 s = self.np_random.randint(0, 83)
-            if self.reward_type == "sit_from_turn":
+            if self.reward_type in ("sit_from_turn", "holistic"):
                 if self.np_random.uniform() < 0.50:
                     s = 0
                 else:
-                    s = self.np_random.randint(1, 84)
+                    if self.reward_type == "sit_from_turn":
+                        s = self.np_random.randint(1, 84)
+                    if self.reward_type == "holistic":
+                        s = self.np_random.randint(80, 128)
             self.expert_qpos = self.expert_qpos[s:]
             # Ignore joint velocity
             if self.reward_type == "sit" or s > 0:
