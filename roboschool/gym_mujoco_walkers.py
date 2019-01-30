@@ -682,6 +682,26 @@ class RoboschoolHumanoidBullet3HighLevelExperimental(RoboschoolHumanoidBullet3Ex
                 walk=gym.spaces.Box(-np.inf, np.inf, shape=(52,)),
             ))
 
+        if self.reward_type == "full_1":
+            self.action_space = gym.spaces.Dict(dict(
+                meta=gym.spaces.Dict(dict(
+                    switch=gym.spaces.Discrete(4),
+                    walk=gym.spaces.Box(-np.inf, np.inf, shape=(2,)),
+                )),
+                lturn=gym.spaces.Box(-1, 1, shape=(21,)),
+                rturn=gym.spaces.Box(-1, 1, shape=(21,)),
+                sit=gym.spaces.Box(-1, 1, shape=(21,)),
+                walk=gym.spaces.Box(-1, 1, shape=(21,)),
+            ))
+            self.observation_space = gym.spaces.Dict(dict(
+                switch=gym.spaces.Box(-1, 3, shape=(), dtype=np.int32),
+                meta=gym.spaces.Box(-np.inf, np.inf, shape=(57,)),
+                lturn=gym.spaces.Box(-np.inf, np.inf, shape=(52,)),
+                rturn=gym.spaces.Box(-np.inf, np.inf, shape=(52,)),
+                sit=gym.spaces.Box(-np.inf, np.inf, shape=(57,)),
+                walk=gym.spaces.Box(-np.inf, np.inf, shape=(52,)),
+            ))
+
     def humanoid_task(self):
         self.scene.stadium = self.scene.cpp_world.load_thingy(
             os.path.join(os.path.dirname(__file__), "models_outdoor/stadium/plane100.obj"),
@@ -689,11 +709,11 @@ class RoboschoolHumanoidBullet3HighLevelExperimental(RoboschoolHumanoidBullet3Ex
         self.walk_target_x = 0
         self.walk_target_y = 0
         self.initial_z = 0.8
-        self.on_support = False
+
+        s = self.rstep[0]
+        qpos = self.qpos['walk'][s[0]][s[1]:s[1] + s[2] + 1][0].copy()
 
         if self.reward_type in ("walk_slow_easy", "walk_slow_hard"):
-            s = self.rstep[0]
-            qpos = self.qpos['walk'][s[0]][s[1]:s[1] + s[2] + 1][0].copy()
             theta = self.np_random.uniform(-np.pi, np.pi)
             rad = self.np_random.uniform(2, 5)
             px = np.cos(theta) * rad
@@ -702,10 +722,18 @@ class RoboschoolHumanoidBullet3HighLevelExperimental(RoboschoolHumanoidBullet3Ex
                 yaw = theta + np.pi + self.np_random.uniform(low=-np.pi/4, high=np.pi/4)
             if self.reward_type == "walk_slow_hard":
                 yaw = theta + np.pi + self.np_random.uniform(low=-np.pi, high=np.pi)
-            R = self._rpy2xmat(0, 0, yaw)
-            qpos[-4] += yaw
-            qpos[-9:-7] = [px, py]
-            qpos[-3:-1] = qpos[-3:-1].dot(R[:2,:2])
+
+        if self.reward_type == "full_1":
+            theta = self.np_random.uniform(low=-0.5*np.pi, high=0.5*np.pi)
+            rad = 1.5000
+            px = np.cos(theta) * rad + 0.4500
+            py = np.sin(theta) * rad
+            yaw = theta + np.pi
+
+        R = self._rpy2xmat(0, 0, yaw)
+        qpos[-4] += yaw
+        qpos[-9:-7] = [px, py]
+        qpos[-3:-1] = qpos[-3:-1].dot(R[:2,:2])
 
         self._reset_robot_pose_and_speed(qpos)
         self._reset_chair()
@@ -726,10 +754,20 @@ class RoboschoolHumanoidBullet3HighLevelExperimental(RoboschoolHumanoidBullet3Ex
         q = self.robot_body.pose().quatertion()
         q = (q * np.array([[-1, -1, -1, 1]]))[0]
 
+        goal = np.array([np.sin(self.angle_to_target), np.cos(self.angle_to_target)], dtype=np.float32)
+
         if self.reward_type in ("walk_slow_easy", "walk_slow_hard"):
-            goal = np.array([np.sin(self.angle_to_target), np.cos(self.angle_to_target)], dtype=np.float32)
             state = {
                 'meta': np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [p] + [q]), -5, +5),
+                'walk': np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [goal]), -5, +5),
+            }
+
+        if self.reward_type == "full_1":
+            state = {
+                'meta': np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [p] + [q]), -5, +5),
+                'lturn': np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [[0.0, 0.0]]), -5, +5),
+                'rturn': np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [[0.0, 0.0]]), -5, +5),
+                'sit': np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [p] + [q]), -5, +5),
                 'walk': np.clip( np.concatenate([more] + [j] + [self.feet_contact] + [goal]), -5, +5),
             }
 
@@ -769,20 +807,29 @@ class RoboschoolHumanoidBullet3HighLevelExperimental(RoboschoolHumanoidBullet3Ex
             print("~INF~")
             done = True
 
+        if self.reward_type == "full_1" and self.cur_switch == 2:
+            done = self.body_xyz[2] < 0.54 or not all([np.isfinite(state[k]).all() for k in state])
+
         for i,f in enumerate(self.feet):
             contact_names = set(x.name for x in f.contact_list())
             self.feet_contact[i] = 1.0 if (self.foot_ground_object_names & contact_names) else 0.0
 
-        self.on_support = self.parts['pelvis'].pose().xyz()[2] < 0.54 and "chair" in [x.name for x in self.parts['pelvis'].contact_list()]
+        on_support = ("chair" in [x.name for x in self.parts['pelvis'].contact_list()]) and (self.parts['pelvis'].pose().xyz()[2] < 0.54)
 
         if (self.frame + 1) % self.timestep == 0 or done:
-            if self.on_support:
-                self.rewards = [1.0]
+            if on_support:
+                if self.reward_type in ("walk_slow_easy", "walk_slow_hard"):
+                    self.rewards = [1.0]
+                if self.reward_type == "full_1":
+                    self.rewards = [5.0]
             else:
                 potential_old = self.potential
                 self.potential = self.calc_potential()
                 r_target = float(self.potential - potential_old)
-                self.rewards = [0.5000 * r_target]
+                if self.reward_type in ("walk_slow_easy", "walk_slow_hard"):
+                    self.rewards = [0.5000 * r_target]
+                if self.reward_type == "full_1":
+                    self.rewards = [0.5000 * r_target]
         else:
             self.rewards = [0.0]
 
